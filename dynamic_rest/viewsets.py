@@ -340,6 +340,23 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
     ENABLE_BULK_PARTIAL_CREATION = settings.ENABLE_BULK_PARTIAL_CREATION
     ENABLE_BULK_UPDATE = settings.ENABLE_BULK_UPDATE
 
+    def is_bulk_request(self, request):
+        plural_name = self.get_serializer_class().get_plural_name()
+        if isinstance(request.data, list):
+            return True
+        elif plural_name in request.data and len(request.data) == 1:
+            return True
+        return False
+
+    def _get_bulk_payload(self, request):
+        plural_name = self.get_serializer_class().get_plural_name()
+        if isinstance(request.data, list):
+            return request.data
+        elif plural_name in request.data and len(request.data) == 1:
+            return request.data[plural_name]
+        else:
+            raise Exception('Cant get bulk payload on a non-bulk request')
+
     def _bulk_update(self, data, partial=False):
         # Restrict the update to the filtered queryset.
         serializer = self.get_serializer(
@@ -378,12 +395,12 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
         ]
         """
         if self.ENABLE_BULK_UPDATE:
-            plural_name = self.get_serializer_class().get_plural_name()
             partial = 'partial' in kwargs
-            if isinstance(request.data, list):
-                return self._bulk_update(request.data, partial)
-            elif plural_name in request.data and len(request.data) == 1:
-                return self._bulk_update(request.data[plural_name], partial)
+            if self.is_bulk_request(request):
+                return self._bulk_update(
+                    self._get_bulk_payload(request),
+                    partial,
+                )
         return super(DynamicModelViewSet, self).update(request, *args,
                                                        **kwargs)
 
@@ -468,10 +485,50 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
             {"name": "Lucky", "age": 3}
         ]
         """
-        plural_name = self.get_serializer_class().get_plural_name()
-        if isinstance(request.data, list):
-            return self._create_many(request.data)
-        elif plural_name in request.data and len(request.data) == 1:
-            return self._create_many(request.data[plural_name])
+        if self.is_bulk_request(request):
+            return self._create_many(self._get_bulk_payload(request))
         return super(DynamicModelViewSet, self).create(
+            request, *args, **kwargs)
+
+    def _destroy_many(self, data):
+        for instance in self.get_queryset().filter(
+            id__in=[d['id'] for d in data]
+        ):
+            self.check_object_permissions(self.request, instance)
+            self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Either delete a single or many model instances in bulk
+
+        DELETE /dogs/
+        {
+            "id": 1
+        }
+
+        DELETE /dogs/
+        {
+            "dog": {
+                "id": 1
+            }
+        }
+
+        DELETE /dogs/
+        {
+            "dogs": [
+                {"id": 1},
+                {"id": 2}
+            ]
+        }
+
+        DELETE /dogs/
+        [
+            {"id": 1},
+            {"id": 2}
+        ]
+        """
+        if self.is_bulk_request(request):
+            return self._destroy_many(self._get_bulk_payload(request))
+        return super(DynamicModelViewSet, self).destroy(
             request, *args, **kwargs)
