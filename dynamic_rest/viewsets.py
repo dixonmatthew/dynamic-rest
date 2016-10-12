@@ -504,11 +504,6 @@ class DynamicModelViewSet(WithDynamicViewSetMixin, viewsets.ModelViewSet):
 
         DELETE /dogs/
         {
-            "id": 1
-        }
-
-        DELETE /dogs/
-        {
             "dog": {
                 "id": 1
             }
