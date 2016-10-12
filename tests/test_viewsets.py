@@ -316,19 +316,6 @@ class BulkDeletionTestCase(TestCase):
         self.ids = [i.pk for i in self.fixture.dogs]
         self.ids_to_delete = self.ids[:2]
 
-    def test_delete_single(self):
-        data = {'id': self.ids_to_delete[0]}
-        response = self.client.delete(
-            '/dogs/',
-            json.dumps(data),
-            content_type='application/json',
-        )
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(
-            Dog.objects.filter(id__in=self.ids_to_delete[0]).count(),
-            0
-        )
-
     def test_bulk_delete_default_style(self):
         data = [{'id': i} for i in self.ids_to_delete]
         response = self.client.delete(
